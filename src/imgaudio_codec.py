@@ -46,13 +46,7 @@ SAMPLES_PER_BIT = int(SAMPLE_RATE / BAUD)
 
 
 def set_baud(new_baud: int) -> None:
-    """Change the module-level default modulation speed (bits per second).
-
-    Kept for backward compatibility (e.g. simple scripts). The GUI does
-    NOT use this anymore - it passes baud/freq explicitly per call, so
-    the Encode and Decode tabs can each use a different speed at the
-    same time without interfering with each other.
-    """
+    """Change the module-level default modulation speed (bits per second)."""
     global BAUD, SAMPLES_PER_BIT
     if new_baud <= 0:
         raise ValueError("baud must be positive")
@@ -67,10 +61,7 @@ def set_tones(freq_0: int, freq_1: int) -> None:
     FREQ_1 = int(freq_1)
 
 
-# Speed presets: (label, baud, freq_0, freq_1). "Fast" was verified to still
-# decode correctly (CRC ok) on both grayscale and color test images; higher
-# bauds were tested and found unreliable with this detector, so they are not
-# offered here.
+# Speed presets: (label, baud, freq_0, freq_1).
 SPEED_PRESETS = {
     "Normal (300 baud)": (300, 1200, 2200),
     "Fast (600 baud)": (600, 1000, 3000),
@@ -114,13 +105,7 @@ def bits_to_bytes(bits: list[int]) -> bytes:
 # Output directories
 # ---------------------------------------------------------------------------
 def get_output_dirs(base_dir: str = None) -> tuple[str, str]:
-    """Return (sound_dir, image_dir), creating them if needed.
-
-    base_dir defaults to the current working directory (handy for the CLI
-    tools). The GUI always passes the project root explicitly so the output
-    folders are created next to src/, never inside it, no matter where the
-    app was launched from.
-    """
+    """Return (sound_dir, image_dir), creating them if needed."""
     if base_dir is None:
         base_dir = os.getcwd()
     sound_dir = os.path.join(base_dir, SOUND_DIR_NAME)
@@ -193,7 +178,7 @@ def encode_image(image_path: str, max_size: int = 48, silence_seconds: float = 0
                   mode: int = MODE_GRAYSCALE, cancel_event=None,
                   baud: int = None, freq_0: int = None, freq_1: int = None) -> EncodedResult:
     """Encode an image to audio. baud/freq_0/freq_1 default to the module
-    constants but can be overridden per call - this is how the GUI lets
+    constants but can be overridden per call, this is how the GUI lets
     each tab use an independent speed without shared mutable state."""
     baud = BAUD if baud is None else baud
     freq_0 = FREQ_0 if freq_0 is None else freq_0
@@ -348,7 +333,7 @@ def decode_audio(path: str, cancel_event=None, baud: int = None,
 def decode_audio_array(audio: np.ndarray, cancel_event=None, baud: int = None,
                         freq_0: int = None, freq_1: int = None) -> DecodedResult:
     """Decode audio back to an image. baud/freq_0/freq_1 default to the
-    module constants but can be overridden per call - must match whatever
+    module constants but can be overridden per call, must match whatever
     speed the audio was encoded with."""
     baud = BAUD if baud is None else baud
     freq_0 = FREQ_0 if freq_0 is None else freq_0

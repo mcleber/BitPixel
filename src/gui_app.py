@@ -1,16 +1,6 @@
 """
 gui_app.py - graphical interface (Tkinter) for the image <-> audio FSK codec.
 
-Features:
-  - Encode image to audio (color/grayscale, original size)
-  - Decode audio to image (file or microphone)
-  - PLAY, PAUSE, STOP with live volume control and click-to-seek
-  - Waveform playback position indicator
-  - Cancel button for active conversions
-  - Auto-creates output_sound/ and output_image_recovered/ next to src/
-  - English only
-  - EXIT, Help, About buttons
-
 Usage:
     python gui_app.py
 """
@@ -50,15 +40,12 @@ FONT_FAMILY = "Helvetica"
 
 SAMPLE_RATE = codec.SAMPLE_RATE
 
-# The project root is one directory above src/, so output folders are
-# always created next to src/ - never inside it - no matter where the
-# app is launched from.
+# The project root is one directory
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # ---------------------------------------------------------------------------
-# Themed message dialog (replaces tk.messagebox: no OS emoji/icons, dark
-# background, light text, OK button in the app's accent color).
+# Themed message dialog
 # ---------------------------------------------------------------------------
 def show_message(parent, title: str, message: str, kind: str = "info"):
     accent = {"info": ACCENT, "warning": WARNING, "error": DANGER}.get(kind, ACCENT)
@@ -167,13 +154,7 @@ class WaveformPanel(ttk.Frame):
 
 
 class _PlayHandle:
-    """Audio playback engine built on a sounddevice.OutputStream callback.
-
-    Using a live callback (instead of one-shot sd.play() calls) is what
-    makes pause/resume continue from the exact sample instead of
-    restarting, lets the volume slider affect sound that is already
-    playing, and lets seeking jump to an arbitrary position.
-    """
+    """Audio playback engine built on a sounddevice.OutputStream callback."""
 
     def __init__(self):
         self.audio: np.ndarray | None = None
@@ -939,9 +920,7 @@ class App(tk.Tk):
             style="Subtitle.TLabel",
         ).pack(anchor="w")
 
-        # Each tab owns its own independent Speed selector - so you can
-        # encode a new image at Fast while decoding an older Normal-speed
-        # recording at the same time, without them interfering.
+        # Each tab owns its own independent Speed selector
         notebook = ttk.Notebook(self)
         notebook.pack(fill="both", expand=True, padx=16, pady=16)
 
@@ -1032,8 +1011,7 @@ class App(tk.Tk):
         container.rowconfigure(0, weight=1)
         container.columnconfigure(0, weight=1)
 
-        # Size the text box to the actual content (clamped) instead of a
-        # fixed guess, so the OK button below it is never pushed off-screen.
+        # Size the text box to the actual content (clamped)
         n_lines = text.count("\n") + 1
         text_height = min(max(n_lines + 1, 6), 28)
 
@@ -1052,9 +1030,7 @@ class App(tk.Tk):
         ttk.Button(btn_frame, text="OK", command=dialog.destroy,
                     style="Accent.TButton").pack(side="right", padx=4)
 
-        # Ask Tk for the size these widgets actually need (OK button
-        # included) and only then decide the window's geometry - a fixed
-        # guessed size was the reason the OK button could end up clipped.
+        # Ask Tk for the size these widgets actually need
         dialog.update_idletasks()
         width = max(min_width, dialog.winfo_reqwidth())
         height = min(max_height, dialog.winfo_reqheight())
