@@ -1,0 +1,17 @@
+#===============================
+# VS CODE
+#===============================
+
+.vscode
+*.code-workspace
+.history
+
+#===============================
+# FOLDERS
+#===============================
+
+__pycache__/
+output_image_recovered/
+output_sound/
+venv/
+

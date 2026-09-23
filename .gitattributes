@@ -1,0 +1,28 @@
+# ===============================
+# Default behavior
+# ===============================
+
+# Automatically detect text files and normalize them to LF in the repository.
+* text=auto eol=lf
+
+# ===============================
+# Git files
+# ===============================
+
+.gitattributes  text
+.gitignore      text
+.editorconfig   text
+
+# ===============================
+# Documentation
+# ===============================
+
+*.md            text eol=lf
+*.txt           text eol=lf
+
+# ===============================
+# Python
+# ===============================
+
+*.py            text eol=lf
+
