@@ -10,7 +10,7 @@ BitPixel is a FSK (Frequency Shift Keying) based system for encoding images as a
 <p align="center">
   <img src="image/BitPixel.png" width="700">
   <br>
-  <em>Figure 1 — Description of the figure.</em>
+  <em>Figure 1 — BitPixel GUI.</em>
 </p>
 
 ---
