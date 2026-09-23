@@ -10,7 +10,7 @@ BitPixel is a FSK (Frequency Shift Keying) based system for encoding images as a
 <p align="center">
   <img src="image/BitPixel.png" width="700">
   <br>
-  <em>Figure 1 — BitPixel GUI.</em>
+  <em>Figure 1. BitPixel GUI.</em>
 </p>
 
 ---
@@ -26,6 +26,7 @@ BitPixel is a FSK (Frequency Shift Keying) based system for encoding images as a
 - [How to Use](#how-to-use)
   - [Image → Audio (Encode Tab)](#image--audio-encode-tab)
   - [Audio → Image (Decode Tab)](#audio--image-decode-tab)
+  - [Microphone Recording](#microphone-recording)
   - [Playback Controls](#playback-controls)
   - [Interface](#interface)
   - [Tips](#tips)
@@ -45,10 +46,10 @@ BitPixel is a FSK (Frequency Shift Keying) based system for encoding images as a
 - **Waveform Position Indicator**: Red line shows current playback position; click the waveform to jump to that point
 - **Status Messages**: Clear text feedback during encoding/decoding
 - **Cancel Button**: Stop active conversions mid-process, including long decodes
-- **Speed Selector**: Each tab (Encode and Decode) has its own independent speed setting — Normal (300 baud, most reliable) or Fast (600 baud, ~2x shorter audio). This lets you, for example, decode an old Normal-speed recording while encoding a new image at Fast, at the same time.
+- **Speed Selector**: Each tab (Encode and Decode) has its own independent speed setting: Normal (300 baud, most reliable) or Fast (600 baud, ~2x shorter audio). This lets you, for example, decode an old Normal-speed recording while encoding a new image at Fast, at the same time.
 - **Clear Log**: Wipe the decode log before decoding a new file
 - **Direct Audio Playback**: Play audio directly using sounddevice
-- **Microphone Recording**: Record audio directly from your microphone
+- **Microphone Recording**: Record audio from the microphone with start/stop control and automatic decoding
 - **Auto Output Directories**: Automatically creates `output_sound/` and `output_image_recovered/`
 - **Original Size Option**: Encode images at native resolution without resizing
 - **CRC Verification**: Built-in checksum for data integrity
@@ -58,10 +59,10 @@ BitPixel is a FSK (Frequency Shift Keying) based system for encoding images as a
 ## Requirements
 
 - Python 3.10+
-- `pillow` — image processing
-- `numpy` — numerical computation
-- `matplotlib` — waveform visualization
-- `sounddevice` — audio playback and microphone recording
+- `pillow`: image processing
+- `numpy`: numerical computation
+- `matplotlib`: waveform visualization
+- `sounddevice`: audio playback and microphone recording
 
 ---
 
@@ -117,24 +118,41 @@ python decode.py audio.wav result.png
 1. Click **"Select image..."** to choose an image file
 2. Set the **maximum size** (or select **"Original size"** for no resize)
 3. Choose **Grayscale** or **Color** mode
-4. Choose the **Speed** — Normal (300 baud, most reliable) or Fast (600 baud, ~2x shorter audio)
-5. Click **"Generate audio"** — a status message shows progress
+4. Choose the **Speed**: Normal (300 baud, most reliable) or Fast (600 baud, ~2x shorter audio)
+5. Click **"Generate audio"**. A status message shows progress
 6. When complete, a confirmation dialog appears
 7. Use **Play / Pause / Stop** to control audio playback; Pause resumes from the same position, not from the beginning
 8. Click anywhere on the waveform to seek to that point
-9. Adjust **volume** with the slider — it applies immediately, even mid-playback
+9. Adjust **volume** with the slider. It applies immediately, even mid-playback
 10. Click **"Cancel"** to stop the conversion at any time
 11. Click **"Save .wav as..."** to save the audio file
 
 ### Audio → Image (Decode Tab)
 
-1. Load a `.wav` file using **"Select .wav file..."**
-2. Or click **"Record from microphone"** to capture audio live
-3. Set the **Speed** to match whatever speed the audio was encoded with (Normal or Fast) — the Decode tab's Speed is independent from the Encode tab's, so this needs to be set on this tab too
-4. Click **"Decode image"** — a status message shows progress
-5. The recovered image appears on the right
-6. Click **"Cancel"** to stop decoding
-7. Click **"Save image as..."** to save the result
+1. Set the **Speed** to match the speed used to encode the audio (Normal or Fast). The Decode tab's Speed is independent from the Encode tab's
+2. Load a `.wav` file using **"Select .wav file..."**, or record from the microphone (see [Microphone Recording](#microphone-recording))
+3. Click **"Decode image"**. A status message shows progress
+4. The recovered image appears on the right
+5. Click **"Cancel"** to stop decoding
+6. Click **"Save image as..."** to save the result
+
+### Microphone Recording
+
+Recording sequence:
+
+1. Set the **Speed** to match the speed used to encode the audio
+2. Set **max duration** longer than the audio, with 15 to 20 seconds of margin (e.g. 90 s for a 67 s audio). The value is only a limit, so the exact audio length is not required
+3. Click **"Record from microphone"** first
+4. Start playing the audio on the other device. A few seconds of silence before the audio is not a problem, since the decoder searches the whole recording for the signal
+5. About 1 second after the audio ends, click **"Stop recording"**. Decoding starts automatically
+
+Important points:
+
+- The recording must start **before** the audio. If the beginning of the audio is missed, the start marker is lost and decoding fails
+- If **"Stop recording"** is not clicked, the recording stops when the max duration is reached
+- If the max duration is shorter than the audio, the end is cut off and the log shows `recording ended early`
+- The peak level shown after recording helps check the volume. Below 5% usually means the volume is too low
+- Keep the environment quiet during the recording
 
 ### Playback Controls
 
@@ -157,9 +175,10 @@ The interface includes:
 
 ### Tips
 
-- **Larger images = longer audio.** At the default Normal speed (300 baud), a 48px grayscale image takes roughly 65 seconds; color takes about 3x longer for the same size (3 bytes/pixel instead of 1). Switching to Fast (600 baud) roughly halves the duration and was tested to still decode reliably, but for very noisy recordings, Normal is safer
+- **Larger images = longer audio.** At the default Normal speed (300 baud), a 48px grayscale image takes roughly 67 seconds; color takes about 3x longer for the same size (3 bytes/pixel instead of 1). Switching to Fast (600 baud) roughly halves the duration and was tested to still decode reliably, but for very noisy recordings, Normal is safer
 - The Speed setting is independent per tab, if you encoded a .wav at Fast, make sure the **Decode tab's own** Speed dropdown is also set to Fast before decoding that file (it does not follow the Encode tab automatically)
 - For better recordings from microphone: quiet environment, louder volume, closer devices
+- Disable noise suppression and audio enhancements for the microphone in the system settings. These filters treat continuous tones as noise and attenuate the signal
 - If CRC verification fails on Fast, switch that tab's Speed to Normal (300 baud), it's slower but far more tolerant of noise
 
 ---
@@ -221,7 +240,7 @@ BitPixel/
 
 This project is distributed under the **GNU General Public License v3.0 (GPL-3.0)**.
 
-**Note**: the FSK/Goertzel modulation technique used here (encoding bits as two audio frequencies, similar to Bell 202) is a standard and publicly documented method.
+**Note**: the FSK modulation technique used here (encoding bits as two audio frequencies, similar to Bell 202) is a standard and publicly documented method.
 
 ---
 

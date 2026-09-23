@@ -12,6 +12,7 @@ from imgaudio_codec import encode_image, save_wav, MODE_COLOR
 
 
 def main():
+    """Parse the command line arguments, encode the image and save the WAV file."""
     parser = argparse.ArgumentParser(description="Encode image to audio FSK")
     parser.add_argument("image", help="image file path")
     parser.add_argument("out", help="output audio file path")

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, ttk
 
@@ -40,7 +41,7 @@ FONT_FAMILY = "Helvetica"
 
 SAMPLE_RATE = codec.SAMPLE_RATE
 
-# The project root is one directory
+# Output folders are created in the parent directory of this file's folder.
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -48,6 +49,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Themed message dialog
 # ---------------------------------------------------------------------------
 def show_message(parent, title: str, message: str, kind: str = "info"):
+    """Show a modal message dialog styled with the application theme."""
     accent = {"info": ACCENT, "warning": WARNING, "error": DANGER}.get(kind, ACCENT)
 
     dialog = tk.Toplevel(parent)
@@ -90,6 +92,8 @@ def show_message(parent, title: str, message: str, kind: str = "info"):
 
 
 class PlaybackState:
+    """Playback states used by the audio player."""
+
     IDLE = "idle"
     PLAYING = "playing"
     PAUSED = "paused"
@@ -97,10 +101,10 @@ class PlaybackState:
 
 
 class WaveformPanel(ttk.Frame):
-    """Displays a waveform. If on_seek is given, clicking the waveform
-    reports the clicked time (in seconds) so playback can jump there."""
+    """Waveform plot widget with optional click-to-seek support."""
 
     def __init__(self, parent, on_seek=None):
+        """Create the figure and connect the click handler when on_seek is set."""
         super().__init__(parent, style="Panel.TFrame")
         self.on_seek = on_seek
         self._duration = 0.0
@@ -113,12 +117,14 @@ class WaveformPanel(ttk.Frame):
             self.canvas.mpl_connect("button_press_event", self._on_click)
 
     def _on_click(self, event):
+        """Send the clicked time in seconds to the seek callback."""
         if event.xdata is None or self._duration <= 0:
             return
         t = max(0.0, min(float(event.xdata), self._duration))
         self.on_seek(t)
 
     def _style_axes(self):
+        """Clear the axes and apply the dark theme."""
         self.axes.clear()
         self.axes.set_facecolor(BG_PANEL)
         for spine in self.axes.spines.values():
@@ -127,6 +133,7 @@ class WaveformPanel(ttk.Frame):
         self.axes.set_xlabel("seconds", color=FG_MUTED, fontsize=8)
 
     def plot(self, audio: np.ndarray, sample_rate: int, color: str = ACCENT, play_pos: float = -1):
+        """Plot the waveform and an optional playback position marker."""
         self._style_axes()
         if audio is not None and len(audio) > 0:
             self._duration = len(audio) / sample_rate
@@ -147,6 +154,7 @@ class WaveformPanel(ttk.Frame):
         self.canvas.draw_idle()
 
     def clear(self):
+        """Clear the waveform plot."""
         self._duration = 0.0
         self._style_axes()
         self.figure.tight_layout()
@@ -154,9 +162,10 @@ class WaveformPanel(ttk.Frame):
 
 
 class _PlayHandle:
-    """Audio playback engine built on a sounddevice.OutputStream callback."""
+    """Audio player based on a sounddevice output stream callback."""
 
     def __init__(self):
+        """Initialize an empty player."""
         self.audio: np.ndarray | None = None
         self.volume = 1.0
         self.position = 0
@@ -165,6 +174,7 @@ class _PlayHandle:
         self._stream = None
 
     def load(self, audio: np.ndarray):
+        """Load a new audio array and reset the position."""
         self.stop()
         with self._lock:
             self.audio = audio
@@ -172,6 +182,7 @@ class _PlayHandle:
             self.state = PlaybackState.IDLE
 
     def _callback(self, outdata, frames, time_info, status):
+        """Fill the output buffer with the next audio block."""
         with self._lock:
             audio = self.audio
             start = self.position
@@ -194,6 +205,7 @@ class _PlayHandle:
             self.position = end
 
     def _open_stream(self):
+        """Open and start a new output stream."""
         self._close_stream()
         self._stream = sd.OutputStream(
             samplerate=SAMPLE_RATE, channels=1, dtype="float32",
@@ -202,6 +214,7 @@ class _PlayHandle:
         self._stream.start()
 
     def _close_stream(self):
+        """Stop and close the current output stream, if any."""
         if self._stream is not None:
             try:
                 self._stream.stop()
@@ -211,7 +224,7 @@ class _PlayHandle:
             self._stream = None
 
     def play(self):
-        """Start (or resume) playback from the current position."""
+        """Start or resume playback from the current position."""
         with self._lock:
             if self.audio is None or len(self.audio) == 0:
                 return
@@ -221,6 +234,7 @@ class _PlayHandle:
         self._open_stream()
 
     def pause(self):
+        """Pause playback and keep the current position."""
         with self._lock:
             if self.state != PlaybackState.PLAYING:
                 return
@@ -228,16 +242,19 @@ class _PlayHandle:
         self._close_stream()
 
     def resume(self):
+        """Resume playback if paused."""
         if self.state == PlaybackState.PAUSED:
             self.play()
 
     def stop(self):
+        """Stop playback and reset the position to the start."""
         self._close_stream()
         with self._lock:
             self.position = 0
             self.state = PlaybackState.STOPPED if self.audio is not None else PlaybackState.IDLE
 
     def seek(self, position: int):
+        """Move the playback position to the given sample index."""
         with self._lock:
             if self.audio is None:
                 return
@@ -248,11 +265,13 @@ class _PlayHandle:
             self._open_stream()
 
     def set_volume(self, volume: float):
+        """Set the playback volume, limited to the range 0.0 to 2.0."""
         with self._lock:
             self.volume = max(0.0, min(volume, 2.0))
 
     @property
     def elapsed(self):
+        """Current playback position in samples."""
         with self._lock:
             return self.position
 
@@ -261,14 +280,17 @@ _play_handle = _PlayHandle()
 
 
 def _play_audio_array(audio: np.ndarray):
+    """Load audio into the shared player."""
     _play_handle.load(audio)
 
 
 def _play_play():
+    """Start playback on the shared player."""
     _play_handle.play()
 
 
 def _play_pause():
+    """Toggle pause on the shared player."""
     if _play_handle.state == PlaybackState.PLAYING:
         _play_handle.pause()
     elif _play_handle.state == PlaybackState.PAUSED:
@@ -276,19 +298,25 @@ def _play_pause():
 
 
 def _play_stop():
+    """Stop the shared player."""
     _play_handle.stop()
 
 
 def _play_seek(position: int):
+    """Seek the shared player to a sample position."""
     _play_handle.seek(position)
 
 
 def _set_volume(volume: float):
+    """Set the shared player volume."""
     _play_handle.set_volume(volume)
 
 
 class EncodeTab(ttk.Frame):
+    """Tab that converts an image into FSK audio."""
+
     def __init__(self, parent, S: dict):
+        """Initialize the tab state and build its widgets."""
         super().__init__(parent, style="Panel.TFrame", padding=16)
         self.S = S
         self.speed_var = tk.StringVar(value="Normal (300 baud)")
@@ -301,6 +329,7 @@ class EncodeTab(ttk.Frame):
         self._build_layout()
 
     def _build_layout(self):
+        """Create and arrange the tab widgets."""
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=1)
 
@@ -404,21 +433,26 @@ class EncodeTab(ttk.Frame):
         self.save_button.pack(side="left", padx=(8, 0))
 
     def _sync_size_label(self):
+        """Update the max size label from the slider value."""
         self.size_value_label.config(text=f"{int(self.size_var.get())} px")
 
     def _original_size(self):
+        """Disable resizing and keep the original image size."""
         self.size_var.set(0)
         self._sync_size_label()
 
     def _on_mode_change(self):
+        """Update the color mode from the radio buttons."""
         self.mode = MODE_COLOR if self.mode_var.get() == "color" else MODE_GRAYSCALE
 
     def _on_volume_change(self):
+        """Apply the volume slider value to the player."""
         vol = self.volume_var.get()
         _set_volume(vol)
         self.vol_label.config(text=f"{int(vol*100)}%")
 
     def _pick_image(self):
+        """Select an image file and show a preview."""
         path = filedialog.askopenfilename(
             title="Choose an image",
             filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.gif"), ("All files", "*.*")],
@@ -434,6 +468,7 @@ class EncodeTab(ttk.Frame):
         self.preview_label.image = photo
 
     def _generate(self):
+        """Encode the selected image in a background thread."""
         if not self.image_path:
             show_message(self.winfo_toplevel(), "No image", "Select an image first.", kind="warning")
             return
@@ -449,6 +484,7 @@ class EncodeTab(ttk.Frame):
         self.update_idletasks()
 
         def worker():
+            """Run the encoder and send the result to the UI thread."""
             try:
                 size_val = self.size_var.get()
                 max_size = size_val if size_val > 0 else None
@@ -469,6 +505,7 @@ class EncodeTab(ttk.Frame):
         self._encode_thread.start()
 
     def _on_generate_done(self, result: codec.EncodedResult):
+        """Show the encoded audio and enable the playback controls."""
         self.generate_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         self.status_label.config(text="Audio generation complete!", foreground=ACCENT)
@@ -489,21 +526,25 @@ class EncodeTab(ttk.Frame):
         show_message(self.winfo_toplevel(), "Complete", "Audio generation finished!", kind="info")
 
     def _on_generate_error(self, exc: Exception):
+        """Restore the controls and show the encoding error."""
         self.generate_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         self.status_label.config(text="Error generating audio", foreground=DANGER)
         show_message(self.winfo_toplevel(), "Error", str(exc), kind="error")
 
     def _on_generate_cancelled(self):
+        """Restore the controls after a cancelled encode."""
         self.generate_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         self.status_label.config(text="Generation cancelled", foreground=WARNING)
 
     def _cancel(self):
+        """Request cancellation of the running encode."""
         self._cancel_event.set()
         self.status_label.config(text="Cancelling...", foreground=WARNING)
 
     def _play_play(self):
+        """Start playback and track the position on the waveform."""
         if not self.audio_result:
             return
         _play_play()
@@ -513,6 +554,7 @@ class EncodeTab(ttk.Frame):
         self._update_playback_position()
 
     def _play_pause_gui(self):
+        """Toggle pause and update the playback buttons."""
         _play_pause()
         if _play_handle.state == PlaybackState.PAUSED:
             self.play_btn.config(state="normal")
@@ -523,6 +565,7 @@ class EncodeTab(ttk.Frame):
             self._update_playback_position()
 
     def _play_stop_gui(self):
+        """Stop playback and reset the playback buttons."""
         _play_stop()
         self.play_btn.config(state="normal")
         self.pause_btn.config(state="disabled")
@@ -531,6 +574,7 @@ class EncodeTab(ttk.Frame):
             self.waveform.plot(self.audio_result.audio, codec.SAMPLE_RATE, color=ACCENT)
 
     def _on_waveform_seek(self, t_seconds: float):
+        """Seek playback to the clicked time on the waveform."""
         if not self.audio_result:
             return
         pos = int(t_seconds * codec.SAMPLE_RATE)
@@ -546,6 +590,7 @@ class EncodeTab(ttk.Frame):
                                 color=ACCENT, play_pos=pos)
 
     def _update_playback_position(self):
+        """Redraw the playback marker while audio is playing."""
         if not self.audio_result:
             return
         pos = _play_handle.elapsed
@@ -559,6 +604,7 @@ class EncodeTab(ttk.Frame):
             self.stop_btn.config(state="disabled")
 
     def _save_as(self):
+        """Save the generated audio to a WAV file."""
         if not self.audio_result:
             return
         sound_dir, _ = codec.get_output_dirs(PROJECT_ROOT)
@@ -574,18 +620,25 @@ class EncodeTab(ttk.Frame):
 
 
 class DecodeTab(ttk.Frame):
+    """Tab that recovers an image from a WAV file or a microphone recording."""
+
     def __init__(self, parent, S: dict):
+        """Initialize the tab state and build its widgets."""
         super().__init__(parent, style="Panel.TFrame", padding=16)
         self.S = S
         self.speed_var = tk.StringVar(value="Normal (300 baud)")
         self.wav_path: str | None = None
         self.decoded_image: Image.Image | None = None
         self._is_recording = False
+        self._stop_recording = threading.Event()
+        self._record_start = 0.0
+        self._record_max = 0
         self._cancel_event = threading.Event()
         self._decode_thread: threading.Thread | None = None
         self._build_layout()
 
     def _build_layout(self):
+        """Create and arrange the tab widgets."""
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=1)
 
@@ -620,8 +673,8 @@ class DecodeTab(ttk.Frame):
                                                 command=self._toggle_recording, style="Secondary.TButton")
             self.record_button.pack(side="left")
             ttk.Label(mic_row, text=self.S["duration_label"], style="Muted.TLabel").pack(side="left", padx=(10, 4))
-            self.record_seconds = tk.IntVar(value=35)
-            ttk.Spinbox(mic_row, from_=5, to=180, increment=5, width=5,
+            self.record_seconds = tk.IntVar(value=120)
+            ttk.Spinbox(mic_row, from_=10, to=600, increment=10, width=5,
                         textvariable=self.record_seconds).pack(side="left")
             self.record_status = ttk.Label(left, text="", style="Muted.TLabel")
             self.record_status.pack(anchor="w", pady=(4, 0))
@@ -669,6 +722,7 @@ class DecodeTab(ttk.Frame):
         self.save_button.pack(anchor="w", pady=(10, 0))
 
     def _pick_audio(self):
+        """Select a WAV file and plot its waveform."""
         path = filedialog.askopenfilename(
             title="Choose recording", filetypes=[("Audio WAV", "*.wav"), ("All files", "*.*")]
         )
@@ -683,37 +737,68 @@ class DecodeTab(ttk.Frame):
             show_message(self.winfo_toplevel(), "Error opening audio", str(exc), kind="error")
 
     def _toggle_recording(self):
+        """Start a microphone recording, or stop the one in progress."""
         if self._is_recording:
+            self._stop_recording.set()
+            self.record_button.config(state="disabled")
             return
+        try:
+            max_seconds = max(1, int(self.record_seconds.get()))
+        except (tk.TclError, ValueError):
+            max_seconds = 120
         self._is_recording = True
-        duration = int(self.record_seconds.get())
-        self.record_button.config(state="disabled")
-        self.record_status.config(text=self.S["recording"].format(duration))
-        self.update_idletasks()
+        self._stop_recording.clear()
+        self._record_start = time.monotonic()
+        self._record_max = max_seconds
+        self.record_button.config(text=self.S["stop_recording"])
+        self._update_record_status()
 
         def worker():
+            """Capture microphone audio until stopped or until the maximum duration is reached."""
+            chunks = []
+            max_frames = int(max_seconds * SAMPLE_RATE)
+            total = 0
             try:
-                audio = sd.rec(int(duration * codec.SAMPLE_RATE), samplerate=codec.SAMPLE_RATE,
-                                channels=1, dtype="float32")
-                sd.wait()
-                audio = audio.reshape(-1)
+                with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32") as stream:
+                    while total < max_frames and not self._stop_recording.is_set():
+                        block, _overflowed = stream.read(min(4096, max_frames - total))
+                        chunks.append(block[:, 0].copy())
+                        total += len(block)
             except Exception as exc:
-                self.after(0, lambda: self._on_record_error(exc))
+                self.after(0, self._on_record_error, exc)
                 return
-            self.after(0, lambda: self._on_record_done(audio))
+            audio = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
+            self.after(0, self._on_record_done, audio)
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _update_record_status(self):
+        """Show the elapsed recording time while recording."""
+        if not self._is_recording:
+            return
+        elapsed = int(time.monotonic() - self._record_start)
+        self.record_status.config(text=self.S["recording"].format(elapsed, self._record_max))
+        self.after(500, self._update_record_status)
+
     def _on_record_error(self, exc: Exception):
+        """Restore the recording controls and show the error."""
         self._is_recording = False
-        self.record_button.config(state="normal")
+        self.record_button.config(text=self.S["record_mic"], state="normal")
         self.record_status.config(text="")
         show_message(self.winfo_toplevel(), "Recording error", str(exc), kind="error")
 
     def _on_record_done(self, audio: np.ndarray):
+        """Save the recording, plot it and start decoding."""
         self._is_recording = False
-        self.record_button.config(state="normal")
-        self.record_status.config(text=self.S["recorded"])
+        self.record_button.config(text=self.S["record_mic"], state="normal")
+        if len(audio) < SAMPLE_RATE:
+            self.record_status.config(text="")
+            show_message(self.winfo_toplevel(), "Recording too short",
+                         "The recording is shorter than one second.", kind="warning")
+            return
+
+        peak = float(np.max(np.abs(audio)))
+        self.record_status.config(text=self.S["recorded"].format(len(audio) / SAMPLE_RATE, peak))
 
         sound_dir, _ = codec.get_output_dirs(PROJECT_ROOT)
         tmp_path = os.path.join(sound_dir, "_mic_recording.wav")
@@ -724,6 +809,7 @@ class DecodeTab(ttk.Frame):
         self._decode()
 
     def _append_log(self, lines: list[str]):
+        """Replace the log contents with the given lines."""
         self.log_box.configure(state="normal")
         self.log_box.delete("1.0", "end")
         for line in lines:
@@ -731,11 +817,13 @@ class DecodeTab(ttk.Frame):
         self.log_box.configure(state="disabled")
 
     def _clear_log(self):
+        """Clear the log box."""
         self.log_box.configure(state="normal")
         self.log_box.delete("1.0", "end")
         self.log_box.configure(state="disabled")
 
     def _decode(self):
+        """Decode the selected audio in a background thread."""
         if not self.wav_path:
             show_message(self.winfo_toplevel(), "No audio", "Select a .wav file first.", kind="warning")
             return
@@ -747,20 +835,22 @@ class DecodeTab(ttk.Frame):
         self.update_idletasks()
 
         def worker():
+            """Run the decoder and send the result to the UI thread."""
             try:
                 baud, freq0, freq1 = codec.SPEED_PRESETS[self.speed_var.get()]
                 result = codec.decode_audio(self.wav_path, cancel_event=self._cancel_event,
                                              baud=baud, freq_0=freq0, freq_1=freq1)
-                self.after(0, lambda: self._on_decode_done(result))
+                self.after(0, self._on_decode_done, result)
             except OperationCancelled:
                 self.after(0, self._on_decode_cancelled)
             except Exception as exc:
-                self.after(0, lambda: self._on_decode_error(exc))
+                self.after(0, self._on_decode_error, exc)
 
         self._decode_thread = threading.Thread(target=worker, daemon=True)
         self._decode_thread.start()
 
     def _on_decode_error(self, exc: Exception):
+        """Restore the controls and show the decoding error."""
         self.decode_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         if HAS_MIC:
@@ -769,6 +859,7 @@ class DecodeTab(ttk.Frame):
         show_message(self.winfo_toplevel(), "Decode error", str(exc), kind="error")
 
     def _on_decode_done(self, result: codec.DecodedResult):
+        """Show the decoded image, status and log."""
         self.decode_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         if HAS_MIC:
@@ -793,6 +884,7 @@ class DecodeTab(ttk.Frame):
         self.save_button.config(state="normal")
 
     def _on_decode_cancelled(self):
+        """Restore the controls after a cancelled decode."""
         self.decode_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         if HAS_MIC:
@@ -800,10 +892,12 @@ class DecodeTab(ttk.Frame):
         self.status_label.config(text="Decode cancelled", foreground=WARNING)
 
     def _cancel_decode(self):
+        """Request cancellation of the running decode."""
         self._cancel_event.set()
         self.status_label.config(text="Cancelling...", foreground=WARNING)
 
     def _save_image(self):
+        """Save the decoded image to a PNG file."""
         if not self.decoded_image:
             return
         _, image_dir = codec.get_output_dirs(PROJECT_ROOT)
@@ -828,7 +922,7 @@ STRINGS = {
         "select_image": "Select image...",
         "max_size_label": "2. Max size (px, longest side)",
         "original_size": "Original size (no resize)",
-        "info_text": "Larger images = longer audio.\n48px grayscale at 300 baud ~ 65s of audio.",
+        "info_text": "Larger images = longer audio.\n48px grayscale at 300 baud ~ 67s of audio.",
         "generate_audio": "Generate audio",
         "waveform_label_decode": "Waveform of generated audio",
         "play": "Play",
@@ -839,9 +933,10 @@ STRINGS = {
         "no_file": "no file selected",
         "select_wav": "Select .wav file...",
         "record_mic": "Record from microphone",
-        "duration_label": "duration (s):",
-        "recording": "Recording... speak now ({0}s)",
-        "recorded": "Recording done, decoding...",
+        "stop_recording": "Stop recording",
+        "duration_label": "max duration (s):",
+        "recording": "Recording... play the audio now ({0}s / {1}s max)",
+        "recorded": "Recorded {0:.1f}s, peak level {1:.0%}. Decoding...",
         "waveform_label_record": "Waveform of recording",
         "decode": "Decode image",
         "result_label": "2. Result",
@@ -861,12 +956,16 @@ STRINGS = {
 
 
 class App(tk.Tk):
+    """Main application window."""
+
     def __init__(self):
+        """Initialize the window and its contents."""
         super().__init__()
         self.S = STRINGS["EN"]
         self._setup_ui()
 
     def _setup_ui(self):
+        """Configure the main window and build its contents."""
         self.title(self.S["title"])
         self.geometry("1360x900")
         self.minsize(1300, 860)
@@ -877,6 +976,7 @@ class App(tk.Tk):
         codec.get_output_dirs(PROJECT_ROOT)
 
     def _setup_style(self):
+        """Configure the ttk styles for the dark theme."""
         style = ttk.Style(self)
         style.theme_use("clam")
 
@@ -911,6 +1011,7 @@ class App(tk.Tk):
         style.configure("Horizontal.TScale", background=BG_PANEL)
 
     def _build_layout(self):
+        """Create the header, the notebook tabs and the bottom buttons."""
         header = ttk.Frame(self, style="TFrame", padding=(20, 18, 20, 8))
         header.pack(fill="x")
         ttk.Label(header, text="Image \u2194 Audio", style="Title.TLabel").pack(anchor="w")
@@ -948,6 +1049,7 @@ class App(tk.Tk):
                     style="Accent.TButton").pack(side="left", padx=4)
 
     def _show_help(self):
+        """Show the help dialog."""
         help_text = (
             "BitPixel - How to Use\n\n"
             "1. IMAGE TO AUDIO:\n"
@@ -960,29 +1062,49 @@ class App(tk.Tk):
             "   - Adjust volume with the slider, even while playing.\n"
             "   - Click 'Cancel' to stop the conversion.\n"
             "   - Save the .wav file if needed.\n\n"
-            "2. AUDIO TO IMAGE:\n"
-            "   - Load a .wav file or record from microphone.\n"
-            "   - Click 'Decode image'.\n"
+            "2. AUDIO TO IMAGE (FILE):\n"
+            "   - Set the Speed to match the one used for encoding.\n"
+            "   - Click 'Select .wav file...' and then 'Decode image'.\n"
             "   - The recovered image appears on the right.\n"
             "   - Click 'Cancel' to stop decoding.\n"
             "   - Save the image if decode succeeds.\n\n"
-            "3. PLAYBACK CONTROLS:\n"
+            "3. AUDIO TO IMAGE (MICROPHONE):\n"
+            "   - Set the Speed to match the one used for encoding.\n"
+            "   - Set 'max duration' longer than the audio, with 15 to 20\n"
+            "     seconds of margin (e.g. 90 s for a 67 s audio). The value\n"
+            "     is only a limit; the exact audio length is not required.\n"
+            "   - Click 'Record from microphone' first.\n"
+            "   - Then start playing the audio on the other device. A few\n"
+            "     seconds of silence before the audio is not a problem.\n"
+            "   - The recording must start before the audio. If the\n"
+            "     beginning of the audio is missed, decoding fails.\n"
+            "   - About 1 second after the audio ends, click\n"
+            "     'Stop recording'. Decoding starts automatically.\n"
+            "   - If 'Stop recording' is not clicked, the recording stops\n"
+            "     when the max duration is reached.\n"
+            "   - Check the peak level shown after recording. Below 5%\n"
+            "     usually means the volume is too low.\n"
+            "   - Keep the environment quiet during the recording.\n\n"
+            "4. PLAYBACK CONTROLS:\n"
             "   - Play: Start playback, or resume after Pause.\n"
-            "   - Pause: Stop playback without losing your place.\n"
+            "   - Pause: Stop playback and keep the current position.\n"
             "   - Stop: Stop and reset playback to the beginning.\n"
             "   - Volume slider: Control playback volume in real time.\n"
             "   - Red line on waveform shows current position; click to seek.\n\n"
-            "4. SPEED:\n"
+            "5. SPEED:\n"
             "   - Each tab has its own Speed dropdown (Normal / Fast).\n"
             "   - Fast halves the audio duration but is less tolerant\n"
             "     of noise; Normal (300 baud) is the safest default.\n"
-            "   - When decoding a file you encoded yourself, set the\n"
-            "     Decode tab's Speed to match what you used to encode it.\n\n"
-            "5. TIPS:\n"
+            "   - The Decode tab's Speed must match the Speed used to\n"
+            "     encode the audio.\n\n"
+            "6. TIPS:\n"
             "   - Larger images = longer audio.\n"
-            "   - 48px grayscale at Normal speed ~ 65 seconds; color takes ~3x longer.\n"
-            "   - For better recordings: quiet environment,\n"
-            "     louder volume, closer devices.\n"
+            "   - 48px grayscale at Normal speed ~ 67 seconds; color takes ~3x longer.\n"
+            "   - For better recordings: louder volume, closer devices.\n"
+            "   - Disable noise suppression and audio enhancements for\n"
+            "     the microphone in the system settings.\n"
+            "   - If the log shows 'recording ended early', increase the\n"
+            "     max duration and record again.\n"
             "   - If CRC fails, try Normal speed instead of Fast.\n"
             "   - Output folders (output_sound/, output_image_recovered/)\n"
             "     are created next to src/ automatically on startup."
@@ -990,6 +1112,7 @@ class App(tk.Tk):
         self._show_dialog("Help - BitPixel", help_text, min_width=560, max_height=560)
 
     def _show_about(self):
+        """Show the about dialog."""
         about_text = (
             "BitPixel\n\n"
             "BitPixel is a FSK (Frequency Shift Keying) based system\n"
@@ -1000,6 +1123,7 @@ class App(tk.Tk):
         self._show_dialog("About - BitPixel", about_text, min_width=420, max_height=320)
 
     def _show_dialog(self, title: str, text: str, min_width: int = 480, max_height: int = 560):
+        """Show a scrollable text dialog centered on the main window."""
         dialog = tk.Toplevel(self)
         dialog.title(title)
         dialog.configure(bg=BG)
@@ -1030,7 +1154,7 @@ class App(tk.Tk):
         ttk.Button(btn_frame, text="OK", command=dialog.destroy,
                     style="Accent.TButton").pack(side="right", padx=4)
 
-        # Ask Tk for the size these widgets actually need
+        # Measure the size required by the widgets
         dialog.update_idletasks()
         width = max(min_width, dialog.winfo_reqwidth())
         height = min(max_height, dialog.winfo_reqheight())
@@ -1047,6 +1171,7 @@ class App(tk.Tk):
 
 
 def main():
+    """Start the application."""
     app = App()
     app.mainloop()
 

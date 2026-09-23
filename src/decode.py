@@ -12,6 +12,7 @@ from imgaudio_codec import decode_audio
 
 
 def main():
+    """Decode the WAV file given on the command line and save the recovered image."""
     if len(sys.argv) < 3:
         print("uso: python decode.py gravacao.wav resultado.png")
         sys.exit(1)
